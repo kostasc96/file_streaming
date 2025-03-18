@@ -13,6 +13,7 @@ libraryDependencies ++= Seq(
 
   // Akka Streams
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+  "com.typesafe.akka" %% "akka-http"    % "10.0.11",
 
   // ScalaTest for Testing
   "org.scalatest" %% "scalatest" % "3.0.5",
@@ -31,3 +32,4 @@ libraryDependencies ++= Seq(
 libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.36"
 libraryDependencies += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.13.4"
 libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % "2.0.0"
+libraryDependencies += "software.amazon.awssdk" % "s3" % "2.25.0"

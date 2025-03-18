@@ -10,6 +10,7 @@ import com.google.flatbuffers.FlatBufferBuilder
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.serialization.{ByteArraySerializer, StringSerializer}
 import redis.clients.jedis.{Jedis, JedisPool, JedisPoolConfig}
+import software.amazon.awssdk.services.s3.S3Client
 
 import java.io.FileNotFoundException
 import java.nio.{ByteBuffer, ByteOrder}
@@ -17,6 +18,13 @@ import java.nio.file.Paths
 import java.util.Properties
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success}
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import java.net.URI
+import akka.stream.scaladsl.StreamConverters
 
 object FileProcessorHttp extends App {
 
@@ -37,12 +45,20 @@ object FileProcessorHttp extends App {
   kafkaProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
   val kafkaProducer = new KafkaProducer[String, Array[Byte]](kafkaProps)
 
-  // File resource
-  val resourceStream = getClass.getResourceAsStream("/mnist.csv")
-  if (resourceStream == null) {
-    throw new FileNotFoundException("File not found in resources!")
-  }
-  val resourcePath = Paths.get(getClass.getResource("/mnist.csv").toURI)
+  val s3Client = S3Client.builder()
+    .endpointOverride(new URI("http://localhost:9000"))
+    .forcePathStyle(true)  // <- add this!
+    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("admin", "admin123")))
+    .region(Region.US_EAST_1)
+    .build()
+
+
+  val getObjectRequest = GetObjectRequest.builder()
+    .bucket("my-bucket")
+    .key("mnist.csv")
+    .build()
+
+  val s3ObjectInputStream = s3Client.getObject(getObjectRequest)
 
   val delimiter = ","
   val parallelism = 4
@@ -57,11 +73,11 @@ object FileProcessorHttp extends App {
 
   // Define the file processing as a function returning a Future
   def processFile(): Future[Unit] = {
-    val source = FileIO.fromPath(resourcePath)
+    val source = StreamConverters.fromInputStream(() => s3ObjectInputStream)
       .via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 65536, allowTruncation = true))
       .map(_.utf8String)
-      .drop(1) // Skip header
-      .take(10) // Process only first 10 rows for testing
+      .drop(1) // Skip header if needed
+      .take(10)
       .zipWithIndex
 
     val processFlow = Flow[(String, Long)].mapAsync(parallelism) {
